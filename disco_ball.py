@@ -250,7 +250,7 @@ class DiscoBall(BaseEffect):
 
     NAME = 'Disco Ball'
     AUTHOR = 'unicorn-viz drop-in'
-    TAGS = ['disco', 'raymarching', 'audio', 'reflections', 'drop-in']
+    TAGS = ['vector', 'disco', 'raymarching', 'reflections']
     PING_PONG_FRIENDS = ['Vector', '3D Cube']
 
     def _init(self) -> None:

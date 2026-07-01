@@ -187,7 +187,7 @@ class Vector(BaseEffect):
 
     NAME = "Vector"
     AUTHOR = "unicorn-viz"
-    TAGS = ["classic", "demoscene", "3d", "audio"]
+    TAGS = ["vector", "classic", "demoscene", "3d"]
     PING_PONG_FRIENDS = ['3D Cube', 'Disco Ball']
 
     def _init(self) -> None:
