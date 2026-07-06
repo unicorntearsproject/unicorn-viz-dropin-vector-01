@@ -146,7 +146,7 @@ class Cube3D(BaseEffect):
 
     NAME = "3D Cube"
     AUTHOR = "unicorn-viz"
-    TAGS = ["vector", "classic", "3d"]
+    TAGS = ['vector', 'classic', '3d', 'chill', 'groovy', 'intense']
     PING_PONG_FRIENDS = ['Vector', 'Disco Ball']
 
     def _init(self) -> None:
