@@ -8,6 +8,13 @@ a hard neon bloom on every edge, streaking warp-speed sparks rushing past,
 and — on every beat — a **laser pulse** that rockets down the tube, a
 chromatic-aberration punch, an FOV kick, and a hard roll-spin recoil.
 
+**Warp bursts**: at random intervals (default every 20-70s, config-tunable)
+the tunnel throws a 3-7s (config-tunable) hyperspace burst — flight speed
+ramps up to 12x, the FOV punches in tight, rings streak into long light
+trails, spark streaks stretch and multiply, and a launch flash + chromatic
+snap sells the "shot into the tunnel" moment. Eased attack/hold/release so it
+never pops in or out; timing is unique per instance via ``self.rng``.
+
 Audio-reactive (deliberately aggressive — every band drives something):
   - bass    → FOV/zoom punch, ring brightness swell, flight-speed floor
   - mid     → hue rotation speed, spoke rotation speed
@@ -48,6 +55,8 @@ uniform float iMid;
 uniform float iTreble;
 uniform float iPulse;     // beat laser-pulse envelope [0,1], 1 = just fired
 uniform float iKick;      // beat roll/FOV recoil envelope [0,1]
+uniform float iWarp;      // hyperspace-burst envelope [0,1], eased attack/hold/release
+uniform float iWarpOnset; // quick-decay launch-flash pulse, 1 = burst just started
 uniform float iSeed;      // per-instance spark-field offset
 uniform float iSpeed;
 uniform float iIntensity;
@@ -104,7 +113,7 @@ void main() {
 
     // Roll spin + FOV punch on beat, continuous slow drift otherwise.
     float roll = t * 0.08 * iSpin + iKick * iSpinGain * 1.1 * iSpin;
-    float zoom = 1.0 - (iBass * 0.10 + iKick * 0.18) * iZoomGain;
+    float zoom = 1.0 - (iBass * 0.10 + iKick * 0.18 + iWarp * 0.34) * iZoomGain;
     vec2 p = (uv - 0.5) * vec2(aspect, 1.0) * zoom;
     float cr = cos(roll), sr = sin(roll);
     p = mat2(cr, -sr, sr, cr) * p;
@@ -114,14 +123,16 @@ void main() {
     float ang = atan(p.y, p.x);
 
     // Forward-flight depth: rings race toward the viewer, speed floor from bass.
-    float flight = t * (0.55 + iBass * 0.9 + energy * 0.6);
+    // Warp bursts dial flight speed up to 12x for a "shot into the tunnel" rush.
+    float flight = t * (0.55 + iBass * 0.9 + energy * 0.6) * mix(1.0, 12.0, iWarp);
     float depth = 0.24 / pd - flight;
 
     vec3 col = vec3(0.0);
 
     // --- polygon wireframe rings (faceted hoops receding into the tunnel) ---
+    // Warp widens the ring band into long motion-blur-style light streaks.
     float ringPos = fract(depth);
-    float ring = smoothstep(0.06, 0.0, min(ringPos, 1.0 - ringPos));
+    float ring = smoothstep(0.06 + iWarp * 0.34, 0.0, min(ringPos, 1.0 - ringPos));
     float ringDepth = floor(depth);
     float ringHue = fract(ringDepth * 0.09 + t * (0.05 + iMid * 0.22));
     float fog = clamp(1.0 - pd * 1.15, 0.0, 1.0);
@@ -144,8 +155,9 @@ void main() {
         float sr0 = 0.15 + hash11(fi * 5.1) * 0.9;
         float sp = fract(t * (0.9 + hash11(fi * 2.3) * 2.4) + hash11(fi * 7.3));
         vec2 sPos = vec2(cos(sa), sin(sa)) * mix(sr0, sr0 * 1.4, sp);
-        float streak = smoothstep(0.010, 0.0, length(p - sPos)) * smoothstep(0.0, 0.25, sp) * smoothstep(1.0, 0.6, sp);
-        col += palette(fract(sa / TAU + 0.5)) * streak * (0.5 + iTreble * 1.2);
+        float streak = smoothstep(0.010, 0.0, length(p - sPos))
+                     * smoothstep(0.0, 0.25 + iWarp * 0.5, sp) * smoothstep(1.0, 0.6 - iWarp * 0.3, sp);
+        col += palette(fract(sa / TAU + 0.5)) * streak * (0.5 + iTreble * 1.2) * (1.0 + iWarp * 1.5);
     }
 
     // --- beat laser pulse: a bright ring rocketing down the tube ---
@@ -156,13 +168,14 @@ void main() {
     // --- neon bloom (cheap): boost anything already hot ---
     col += pow(max(col - 0.55, 0.0), vec3(1.5)) * 1.5;
 
-    // Chromatic aberration, heavier on the beat kick.
-    float ca = 0.0018 + iKick * 0.010 + iPulse * 0.006;
+    // Chromatic aberration, heavier on the beat kick and during warp bursts.
+    float ca = 0.0018 + iKick * 0.010 + iPulse * 0.006 + iWarp * 0.014;
     col.r += ca * 40.0 * ring * fog;
     col.b -= ca * 20.0 * ring * fog;
 
-    // Full-room strobe flash on the hardest hits.
+    // Full-room strobe flash on the hardest hits + a launch flash at warp onset.
     col += vec3(1.0, 0.9, 1.0) * iKick * iKick * 0.20 * iStrobeGain;
+    col += vec3(1.0, 0.95, 1.0) * iWarpOnset * iWarpOnset * 0.4;
 
     // Vignette + flicker + tonemap.
     col *= 0.96 + 0.04 * hash11(floor(t * 26.0));
@@ -218,6 +231,21 @@ class LaserTunnel(BaseEffect):
         self._treble = 0.0
         self._pulse = 0.0
         self._kick = 0.0
+
+        # Hyperspace warp bursts: random interval, random duration, eased
+        # attack/hold/release envelope so it never pops in or out.
+        self._warp_enabled = bool(self.config.get('warp_enabled', True))
+        self._warp_interval_min = float(self.config.get('warp_interval_min', 20.0))
+        self._warp_interval_max = float(self.config.get('warp_interval_max', 70.0))
+        self._warp_duration_min = float(self.config.get('warp_duration_min', 3.0))
+        self._warp_duration_max = float(self.config.get('warp_duration_max', 7.0))
+        self._warp_cooldown = float(self.rng.uniform(self._warp_interval_min, self._warp_interval_max))
+        self._warp_active = False
+        self._warp_t = 0.0
+        self._warp_duration = 0.0
+        self._warp_env = 0.0
+        self._warp_onset = 0.0
+
         self._prog = self._make_program(_VERT, _FRAG)
         self._vao, self._vbo = self._fullscreen_quad(self._prog)
 
@@ -235,6 +263,40 @@ class LaserTunnel(BaseEffect):
         # Heavy low end keeps a slight recoil alive between hits.
         self._kick = max(self._kick, self._bass * 0.30)
 
+        # Hyperspace warp scheduler: fire a random-length burst on a random
+        # cooldown, then ease it in/out with an attack/hold/release envelope.
+        self._warp_onset = max(0.0, self._warp_onset - dt * 3.0)
+        target = 0.0
+        if self._warp_enabled:
+            if self._warp_active:
+                self._warp_t += dt
+                if self._warp_t >= self._warp_duration:
+                    self._warp_active = False
+                    self._warp_cooldown = float(
+                        self.rng.uniform(self._warp_interval_min, self._warp_interval_max)
+                    )
+            else:
+                self._warp_cooldown -= dt
+                if self._warp_cooldown <= 0.0:
+                    self._warp_active = True
+                    self._warp_t = 0.0
+                    self._warp_duration = float(
+                        self.rng.uniform(self._warp_duration_min, self._warp_duration_max)
+                    )
+                    self._warp_onset = 1.0
+
+            if self._warp_active:
+                attack = min(self._warp_duration * 0.2, 0.5)
+                release = min(self._warp_duration * 0.3, 1.0)
+                if self._warp_t < attack:
+                    target = self._warp_t / max(attack, 1e-3)
+                elif self._warp_t > self._warp_duration - release:
+                    target = max(0.0, (self._warp_duration - self._warp_t) / max(release, 1e-3))
+                else:
+                    target = 1.0
+        # Smooth toward the target envelope so warp never pops in or out.
+        self._warp_env += (target - self._warp_env) * min(1.0, dt * 8.0)
+
     def render(self) -> None:
         p = self._prog
         p["iTime"].value = self.time
@@ -244,6 +306,8 @@ class LaserTunnel(BaseEffect):
         p["iTreble"].value = self._treble
         p["iPulse"].value = self._pulse
         p["iKick"].value = self._kick
+        p["iWarp"].value = self._warp_env
+        p["iWarpOnset"].value = self._warp_onset
         p["iSeed"].value = self.parameters["seed"]
         p["iSpeed"].value = self.parameters["speed"]
         p["iIntensity"].value = self.parameters["intensity"]
