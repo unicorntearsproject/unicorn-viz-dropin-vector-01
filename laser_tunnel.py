@@ -31,6 +31,8 @@ from config / MIDI / the control room.
 """
 from __future__ import annotations
 
+__version__ = '0.9.0'
+
 import moderngl
 
 from unicornviz.effects.base import BaseEffect, AudioData
