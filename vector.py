@@ -133,7 +133,10 @@ void main() {
     vec3 col = uColor * uBrightness;
 
     // Subtle sparkle touches: occasional pixel glints on wire edges.
-    float spark = step(0.997, hash(floor(gl_FragCoord.xy * 0.35) + floor(uTime * 10.0)));
+    // mod() before the hash: floor(uTime*10) at large start phases (up to
+    // 1e5) exceeds float32's 2^23 inside hash(), permanently killing the
+    // glints for most instances (audit 2026-08-03 §8 Class B).
+    float spark = step(0.997, hash(floor(gl_FragCoord.xy * 0.35) + floor(mod(uTime, 1024.0) * 10.0)));
     col += vec3(1.0, 0.95, 0.85) * spark * uSparkle;
 
     // Edge racers: bright beads traveling along each wire segment.
