@@ -74,7 +74,10 @@ out vec4 fragColor;
 #define PI  3.14159265359
 #define TAU 6.28318530718
 
-float hash11(float n) { return fract(sin(n * 78.233 + iSeed) * 43758.5453); }
+// n is wrapped first: callers pass floor(t * ~30), which reaches ~300000
+// with a randomised start time, and sin() of an argument that large is
+// precision-degraded (and GPU-dependent), flattening the flicker.
+float hash11(float n) { n = mod(n, 1024.0); return fract(sin(n * 78.233 + iSeed) * 43758.5453); }
 float hash21(vec2 p) {
     p = fract(p * vec2(123.34, 456.21) + iSeed);
     p += dot(p, p + 45.32);
