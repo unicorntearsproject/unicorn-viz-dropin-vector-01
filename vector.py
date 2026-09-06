@@ -40,7 +40,6 @@ def _cube_edges() -> np.ndarray:
 
 def _octa_edges() -> np.ndarray:
     """Unit octahedron."""
-    r2 = math.sqrt(2.0)
     v = np.array([
         [0, 1, 0],[0,-1, 0],
         [1, 0, 0],[-1,0, 0],
